@@ -3,7 +3,6 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 from app.services import wall as wall_svc
 from app.services.core import business_day, is_sealed, now
-from app.services import wall_surface
 
 
 def get_seal(conn) -> dict:
@@ -51,6 +50,8 @@ def seal_day(conn, force: bool = False) -> dict:
             "INSERT INTO day_seals(business_day, sealed, sealed_at, note) VALUES (?,?,?,?)",
             (day, 1, ts, note),
         )
+    # 封口改变可叫状态，须在同一写事务内刷新墙与审计。
+    wall_svc.commit_wall(conn, "封口", note)
     return get_seal(conn)
 
 
@@ -62,6 +63,7 @@ def unseal_day(conn) -> dict:
         "UPDATE day_seals SET sealed=0, sealed_at=NULL, note=? WHERE business_day=?",
         ("已解封", day),
     )
+    wall_svc.commit_wall(conn, "解封", "已解封")
     return get_seal(conn)
 
 
@@ -89,7 +91,7 @@ def roll_day(conn, target: str | None = None) -> dict:
     # 重置各类序号
     conn.execute("UPDATE business_kinds SET seq=0")
     # 新营业日墙面从空队列起步：旧日快照按新营业日重放为空集。
-    wall_svc.rebuild_snapshots(conn, nxt)
+    wall_svc.commit_wall(conn, "切日", f"{cur} -> {nxt}")
     return {
         "原营业日": cur,
         "营业日": nxt,
@@ -133,5 +135,15 @@ _overview_impl = overview
 
 
 def overview(conn):
-    return wall_surface.overlay_overview(_overview_impl(conn), conn)
+    """总览：计数直接来自队列表，并附同一次读事务内的墙面核对摘要。
+
+    不再叠加任何“表面”设置覆盖——总览等候桶必须与墙/队列表同源。
+    """
+    out = _overview_impl(conn)
+    summary = wall_svc.wall_summary(conn)
+    out["墙面核对"] = summary
+    out["可叫"] = summary["可叫"]
+    out["对齐"] = summary["对齐"]
+    out["真源"] = wall_svc.SOURCE_NAME
+    return out
 

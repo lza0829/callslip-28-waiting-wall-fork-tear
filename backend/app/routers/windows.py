@@ -24,7 +24,3 @@ def list_windows():
 def set_open(window_id: int, body: OpenBody):
     with write_db() as conn:
         return win_svc.set_open(conn, window_id, body.开放)
-
-def _surface_router_windows() -> dict:
-    return {"panel": "windows", "ready": True}
-

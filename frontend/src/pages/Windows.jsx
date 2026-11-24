@@ -29,6 +29,8 @@ export default function Windows() {
                 <div className="no">{w.当前号.号牌}</div>
                 <div className="meta">{w.当前号.状态}</div>
               </div>
+            ) : w.当前号悬空 ? (
+              <p className="err">当前号悬空：窗口指向不存在的号牌，叫号高亮已判拧花</p>
             ) : <p className="muted">空闲</p>}
             <div className="actions">
               <button type="button" className={w.开放 ? 'ghost' : ''} onClick={() => toggle(w)}>

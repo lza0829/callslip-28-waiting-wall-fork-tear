@@ -10,8 +10,8 @@ def seed_if_empty() -> None:
     with write_db() as conn:
         n = conn.execute("SELECT COUNT(*) AS c FROM business_kinds").fetchone()["c"]
         if n:
-            # 老库升级：确保当日墙面缓存由队列表初始化。
-            wall_svc.rebuild_snapshots(conn)
+            # 老库升级：确保当日墙面缓存由队列表初始化，并留下刷新审计。
+            wall_svc.commit_wall(conn, "启动初始化", "老库升级：按队列表重放墙面")
             return
         today = date.today().isoformat()
         kinds = [
@@ -73,4 +73,4 @@ def seed_if_empty() -> None:
             "INSERT INTO day_seals(business_day, sealed, sealed_at, note) VALUES (?,0,NULL,?)",
             (today, "当日未封口"),
         )
-        wall_svc.rebuild_snapshots(conn, today)
+        wall_svc.commit_wall(conn, "种子初始化", "首启种子：按队列表重放墙面")

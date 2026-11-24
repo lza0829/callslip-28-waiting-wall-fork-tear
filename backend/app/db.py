@@ -68,6 +68,23 @@ CREATE TABLE IF NOT EXISTS wall_snapshots (
   built_at TEXT NOT NULL,
   PRIMARY KEY (business_day, kind_id)
 );
+-- 墙刷新审计：每个写口在同一写事务内追加一条，记录本次重放的真源/物化批次。
+-- 与队列表、位次物化同提交、同回滚，可从审计核对“谁在哪次写口刷新了墙”。
+CREATE TABLE IF NOT EXISTS wall_refresh_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  business_day TEXT NOT NULL,
+  kind_id INTEGER,
+  trigger TEXT NOT NULL,
+  source_rows INTEGER NOT NULL,
+  waiting_count INTEGER NOT NULL,
+  skipped_count INTEGER NOT NULL,
+  digest TEXT NOT NULL,
+  materialized_digest TEXT,
+  aligned INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_wall_audit_day ON wall_refresh_audit(business_day, id);
 '''
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import HTTPException
 from app.services import wall as wall_svc
-from app.services.core import business_day, parse_kind_ids, ticket_dict, ticket_row, window_row
+from app.services.core import parse_kind_ids, ticket_dict, window_row
 
 
 def list_windows(conn) -> list[dict]:
@@ -17,8 +17,17 @@ def list_windows(conn) -> list[dict]:
             if k:
                 kinds.append({"id": k["id"], "名称": k["name"], "前缀": k["prefix"]})
         cur = None
+        dangling = False
         if r["current_ticket_id"]:
-            cur = ticket_dict(conn, ticket_row(conn, r["current_ticket_id"]))
+            # 窗口当前号必须能解析；悬空引用不阻断窗口列表，但如实标注，
+            # 让墙/总览的高亮核对把它判为拧花。
+            row_cur = conn.execute(
+                "SELECT * FROM tickets WHERE id=?", (r["current_ticket_id"],)
+            ).fetchone()
+            if row_cur is not None:
+                cur = ticket_dict(conn, row_cur)
+            else:
+                dangling = True
         out.append(
             {
                 "id": r["id"],
@@ -26,6 +35,7 @@ def list_windows(conn) -> list[dict]:
                 "开放": bool(r["open"]),
                 "可办种类": kinds,
                 "当前号": cur,
+                "当前号悬空": dangling,
             }
         )
     return out
@@ -61,6 +71,7 @@ def set_kind_active(conn, kind_id: int, active: bool) -> dict:
         "UPDATE business_kinds SET active=? WHERE id=?",
         (1 if active else 0, kind_id),
     )
-    # 启停会改变分栏可见性，必须在同一事务内重放物化快照。
-    wall_svc.rebuild_snapshots(conn, business_day(conn))
+    # 启停会改变分栏可见性，必须在同一事务内重放物化并写墙刷新审计。
+    label = "启用" if active else "停用"
+    wall_svc.commit_wall(conn, f"种类{label}", row["name"])
     return next(k for k in list_kinds(conn) if k["id"] == kind_id)

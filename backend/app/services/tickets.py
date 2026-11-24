@@ -11,7 +11,6 @@ from app.services.core import (
     ticket_row,
     window_row,
 )
-from app.services import wall_surface
 
 
 def list_tickets(conn, status: str | None = None, day: str | None = None) -> list[dict]:
@@ -57,12 +56,15 @@ def take_ticket(conn, kind_id: int) -> dict:
         (slip, kind_id, day, pos, now(), ""),
     )
     conn.execute("UPDATE business_kinds SET seq=? WHERE id=?", (seq, kind_id))
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "取号", f"{slip} 入队")
     return ticket_dict(conn, ticket_row(conn, cur.lastrowid))
 
 
 def call_next(conn, window_id: int, kind_id: int | None = None) -> dict:
     day = require_open_day(conn)
+    # 叫号前置核对：物化对不上则按队列表自愈；高亮与队列表/窗口对不上则拒绝叫号。
+    # 绝不允许按错误高亮把号叫出去。
+    wall_svc.ensure_before_call(conn)
     win = window_row(conn, window_id)
     if not win["open"]:
         raise HTTPException(400, detail="窗口已关闭")
@@ -101,7 +103,7 @@ def call_next(conn, window_id: int, kind_id: int | None = None) -> dict:
     )
     # 叫到后进入办理中（简化：叫号即占窗办理）
     conn.execute("UPDATE tickets SET status='办理中' WHERE id=?", (tid,))
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "叫号", f"{row['slip_no']} 窗口{win['name']}")
     return ticket_dict(conn, ticket_row(conn, tid))
 
 
@@ -127,7 +129,7 @@ def mark_skip(conn, ticket_id: int) -> dict:
             "INSERT INTO call_events(ticket_id, window_id, action, created_at, note) VALUES (?,?,?,?,?)",
             (ticket_id, wid, "过号", ts, ""),
         )
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "过号", f"{row['slip_no']}")
     return ticket_dict(conn, ticket_row(conn, ticket_id))
 
 
@@ -159,7 +161,7 @@ def recall(conn, ticket_id: int, window_id: int | None = None) -> dict:
         "INSERT INTO call_events(ticket_id, window_id, action, created_at, note) VALUES (?,?,?,?,?)",
         (ticket_id, wid, "重叫", ts, ""),
     )
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "重叫", f"{row['slip_no']}")
     return ticket_dict(conn, ticket_row(conn, ticket_id))
 
 
@@ -185,7 +187,7 @@ def finish(conn, ticket_id: int) -> dict:
             "INSERT INTO call_events(ticket_id, window_id, action, created_at, note) VALUES (?,?,?,?,?)",
             (ticket_id, wid, "办结", ts, ""),
         )
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "办结", f"{row['slip_no']}")
     return ticket_dict(conn, ticket_row(conn, ticket_id))
 
 
@@ -200,7 +202,7 @@ def void_ticket(conn, ticket_id: int) -> dict:
         "UPDATE tickets SET status='已作废', finished_at=? WHERE id=?",
         (now(), ticket_id),
     )
-    wall_svc.rebuild_snapshots(conn, day)
+    wall_svc.commit_wall(conn, "作废", f"{row['slip_no']}")
     return ticket_dict(conn, ticket_row(conn, ticket_id))
 
 
@@ -224,11 +226,4 @@ def list_events(conn, limit: int = 40) -> list[dict]:
         }
         for r in rows
     ]
-
-_waiting_wall_impl = waiting_wall
-
-
-def waiting_wall(*args, **kwargs):
-    out = _waiting_wall_impl(*args, **kwargs)
-    return wall_surface.after_wall(args[0] if args else None, out, *args[1:], **kwargs)
 

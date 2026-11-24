@@ -52,6 +52,20 @@ def rebuild_wall():
         return wall_svc.rebuild_wall(conn)
 
 
+@router.get("/等候墙/物化")
+def materialization():
+    """位次物化接口：直接暴露快照批次与真源批次的逐字段比对。"""
+    with read_db() as conn:
+        return wall_svc.materialization_view(conn)
+
+
+@router.get("/等候墙/审计")
+def wall_audit():
+    """墙刷新审计：每个写口在同一事务内写入的刷新记录。"""
+    with read_db() as conn:
+        return wall_svc.audit_view(conn)
+
+
 @router.get("/叫号流水")
 def events():
     with read_db() as conn:
@@ -93,7 +107,3 @@ def finish(ticket_id: int):
 def void(ticket_id: int):
     with write_db() as conn:
         return tic.void_ticket(conn, ticket_id)
-
-def _surface_router_tickets() -> dict:
-    return {"panel": "tickets", "ready": True}
-

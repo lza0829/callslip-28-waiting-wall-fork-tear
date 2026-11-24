@@ -10,7 +10,3 @@ router = APIRouter(tags=["总览"])
 def overview():
     with read_db() as conn:
         return dayseal.overview(conn)
-
-def _surface_router_overview() -> dict:
-    return {"panel": "overview", "ready": True}
-

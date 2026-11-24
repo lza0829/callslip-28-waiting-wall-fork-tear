@@ -22,7 +22,16 @@ export default function Take() {
       const [w, o] = await Promise.all([api.wall(), api.overview()])
       const lane = w.墙面.find(b => b.业务种类 === t.业务种类)
       const onWall = lane?.卡片.some(c => c.id === t.id) ?? false
-      setCheck({ 墙上在位: onWall, 位次: lane?.卡片.find(c => c.id === t.id)?.位次, 对齐灯: w.对齐?.灯, 等候总数: o.等候 })
+      const probe = o.墙面核对
+      setCheck({
+        墙上在位: onWall,
+        位次: lane?.卡片.find(c => c.id === t.id)?.位次,
+        对齐灯: w.对齐?.灯,
+        可叫: w.可叫,
+        高亮一致: w.高亮核对?.一致,
+        同批: probe?.重放批次 === w.重放批次,
+        等候总数: o.等候,
+      })
       load()
     } catch (e) { setErr(e.message) }
   }
@@ -50,9 +59,10 @@ export default function Take() {
           </div>
         )}
         {check && (
-          <p className={check.墙上在位 ? 'muted' : 'err'}>
+          <p className={check.墙上在位 && check.同批 ? 'muted' : 'err'}>
             取号回执核验：墙面{check.墙上在位 ? '已在位' : '未在位'} · 墙面位次 {check.位次 ?? '—'} ·
-            对齐灯{check.对齐灯 ? '亮' : '灭'} · 总览等候 {check.等候总数}
+            对齐灯{check.对齐灯 ? '亮' : '灭'} · 高亮{check.高亮一致 ? '一致' : '拧花'} ·
+            可叫{check.可叫 ? '是' : '否'} · 与总览{check.同批 ? '同批' : '不同批（半刷）'} · 总览等候 {check.等候总数}
           </p>
         )}
       </section>

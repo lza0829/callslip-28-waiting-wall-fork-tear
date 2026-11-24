@@ -26,11 +26,19 @@ export default function Call() {
     try {
       const t = await api.call(Number(wid), kid ? Number(kid) : null)
       setMsg(`已叫 ${t.号牌}，窗口 ${t.窗口}`)
-      // 叫号回执后核验：墙面已出队、在办已接住、对齐灯仍亮。
+      // 叫号回执后核验：墙面已出队、在办已接住、高亮同源、对齐灯仍亮且可叫。
       const w = await api.wall()
       const stillOnWall = w.墙面.some(b => b.卡片.some(c => c.id === t.id))
       const inService = w.在办.some(c => c.id === t.id)
-      setCheck({ 墙上仍在: stillOnWall, 在办在位: inService, 对齐灯: w.对齐?.灯 })
+      const highlighted = (w.叫号高亮 || []).some(c => c.id === t.id)
+      setCheck({
+        墙上仍在: stillOnWall,
+        在办在位: inService,
+        高亮在位: highlighted,
+        高亮一致: w.高亮核对?.一致,
+        可叫: w.可叫,
+        对齐灯: w.对齐?.灯,
+      })
       load()
     } catch (ex) { setErr(ex.message) }
   }
@@ -68,9 +76,12 @@ export default function Call() {
         {err && <p className="err">{err}</p>}
         {msg && <p className="muted">{msg}</p>}
         {check && (
-          <p className={!check.墙上仍在 && check.在办在位 ? 'muted' : 'err'}>
+          <p className={!check.墙上仍在 && check.在办在位 && check.高亮在位 && check.高亮一致 && check.可叫 ? 'muted' : 'err'}>
             叫号回执核验：墙面{check.墙上仍在 ? '仍在（异常）' : '已出队'} ·
-            在办{check.在办在位 ? '已在位' : '未在位（异常）'} · 对齐灯{check.对齐灯 ? '亮' : '灭'}
+            在办{check.在办在位 ? '已在位' : '未在位（异常）'} ·
+            高亮{check.高亮在位 ? '已同源' : '未同源（异常）'} ·
+            高亮核对{check.高亮一致 ? '一致' : '拧花'} ·
+            可叫{check.可叫 ? '是' : '否'} · 对齐灯{check.对齐灯 ? '亮' : '灭'}
           </p>
         )}
         {current && (
